@@ -15,7 +15,7 @@
  ********************************************************************************/
 
 import { inject, injectable, postConstruct } from 'inversify';
-import { Message } from '@theia/core/lib/browser';
+import { Message, StatefulWidget } from '@theia/core/lib/browser';
 import { OutputChannelManager, OutputChannel } from '../common/output-channel';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import * as React from 'react';
@@ -25,10 +25,12 @@ import '../../src/browser/style/output.css';
 export const OUTPUT_WIDGET_KIND = 'outputView';
 
 @injectable()
-export class OutputWidget extends ReactWidget {
+export class OutputWidget extends ReactWidget implements StatefulWidget {
 
     @inject(OutputChannelManager)
     protected readonly outputChannelManager: OutputChannelManager;
+
+    protected readonly lockedChannels = new Set<string>();
 
     constructor() {
         super();
@@ -103,6 +105,36 @@ export class OutputWidget extends ReactWidget {
         }
     }
 
+    /**
+     * `channelName` defaults to the name of the currently selected channel, or `undefined`.
+     */
+    toggleScrollLock(channelName: string | undefined = (this.outputChannelManager.selectedChannel ? this.outputChannelManager.selectedChannel.name : undefined)): void {
+        if (!channelName) {
+            return;
+        }
+        const channel = this.outputChannelManager.getChannel(channelName);
+        if (!channel) {
+            return;
+        }
+        const isLocked = this.lockedChannels.has(channelName);
+        if (isLocked) {
+            this.lockedChannels.delete(channelName);
+        } else {
+            this.lockedChannels.add(channelName);
+        }
+    }
+
+    isLocked(channelName: string | undefined = (this.outputChannelManager.selectedChannel ? this.outputChannelManager.selectedChannel.name : undefined)): boolean {
+        if (!channelName) {
+            return false;
+        }
+        const channel = this.outputChannelManager.getChannel(channelName);
+        if (!channel) {
+            return false;
+        }
+        return this.lockedChannels.has(channelName);
+    }
+
     protected renderChannelContents(): React.ReactNode {
         return <div id={OutputWidget.IDs.CONTENTS}>{this.renderLines()}</div>;
     }
@@ -132,13 +164,32 @@ export class OutputWidget extends ReactWidget {
 
     protected onUpdateRequest(msg: Message): void {
         super.onUpdateRequest(msg);
-        setTimeout(() => {
-            const div = document.getElementById(OutputWidget.IDs.CONTENTS) as HTMLDivElement;
-            if (div && div.children.length > 0) {
-                div.children[div.children.length - 1].scrollIntoView(false);
-            }
-        });
+        const isLocked = this.outputChannelManager.selectedChannel ? this.lockedChannels.has(this.outputChannelManager.selectedChannel.name) : false;
+        if (!isLocked) {
+            setTimeout(() => {
+                const div = document.getElementById(OutputWidget.IDs.CONTENTS) as HTMLDivElement;
+                if (div && div.children.length > 0) {
+                    div.children[div.children.length - 1].scrollIntoView(false);
+                }
+            });
+        }
     }
+
+    storeState(): object {
+        const existingChannelIds = new Set(this.outputChannelManager.getChannels().map(({ name }) => name));
+        return Array.from(this.lockedChannels).filter(id => existingChannelIds.has(id));
+    }
+
+    restoreState(oldState: object): void {
+        if (Array.isArray(oldState)) {
+            for (const item of oldState) {
+                if (typeof item === 'string') {
+                    this.lockedChannels.add(item);
+                }
+            }
+        }
+    }
+
 }
 
 export namespace OutputWidget {

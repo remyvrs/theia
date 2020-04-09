@@ -37,6 +37,11 @@ export namespace OutputCommands {
         label: 'Select All'
     };
 
+    export const SCROLL_LOCK: Command = {
+        id: 'output:scrollLock',
+        category: OUTPUT_CATEGORY
+    };
+
 }
 
 /**
@@ -87,6 +92,11 @@ export class OutputContribution extends AbstractViewContribution<OutputWidget> {
             isEnabled: () => this.outputIsActiveContext.isEnabled(),
             isVisible: () => this.outputIsActiveContext.isEnabled(),
             execute: widget => this.withWidget(widget, outputWidget => outputWidget.selectAll())
+        });
+        commands.registerCommand(OutputCommands.SCROLL_LOCK, {
+            isEnabled: () => this.outputIsActiveContext.isEnabled(),
+            isVisible: () => this.outputIsActiveContext.isEnabled(),
+            execute: widget => this.withWidget(widget, outputWidget => outputWidget.toggleScrollLock())
         });
     }
 

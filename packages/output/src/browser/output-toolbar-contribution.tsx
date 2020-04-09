@@ -17,8 +17,10 @@
 import { inject, injectable } from 'inversify';
 import { OutputWidget } from './output-widget';
 import { OutputChannelManager } from '../common/output-channel';
-import { TabBarToolbarContribution, TabBarToolbarRegistry } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
-import { OutputCommands } from './output-contribution';
+import { Widget } from '@phosphor/widgets';
+import { DisposableCollection } from '@theia/core/lib/common/disposable';
+import { TabBarToolbarContribution, TabBarToolbarRegistry, ReactTabBarToolbarItem } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
+import { OutputCommands, OutputContribution } from './output-contribution';
 import * as React from 'react';
 
 @injectable()
@@ -27,6 +29,9 @@ export class OutputToolbarContribution implements TabBarToolbarContribution {
     @inject(OutputChannelManager)
     protected readonly outputChannelManager: OutputChannelManager;
 
+    @inject(OutputContribution)
+    protected readonly outputContribution: OutputContribution;
+
     async registerToolbarItems(toolbarRegistry: TabBarToolbarRegistry): Promise<void> {
         toolbarRegistry.registerItem({
             id: 'channels',
@@ -34,12 +39,20 @@ export class OutputToolbarContribution implements TabBarToolbarContribution {
             isVisible: widget => (widget instanceof OutputWidget),
             onDidChange: this.outputChannelManager.onListOrSelectionChange
         });
-
         toolbarRegistry.registerItem({
             id: OutputCommands.CLEAR_OUTPUT_TOOLBAR.id,
             command: OutputCommands.CLEAR_OUTPUT_TOOLBAR.id,
             tooltip: 'Clear Output',
             priority: 1,
+        });
+        toolbarRegistry.registerItem({
+            id: BoardsToolBarItem.TOOLBAR_ID,
+            render: () => <BoardsToolBarItem
+                key='boardsToolbarItem'
+                commands={this.commandRegistry}
+                boardsServiceClient={this.boardsServiceClientImpl} />,
+            isVisible: widget => ArduinoToolbar.is(widget) && widget.side === 'left',
+            priority: 2
         });
     }
 
@@ -70,4 +83,55 @@ export class OutputToolbarContribution implements TabBarToolbarContribution {
             this.outputChannelManager.selectedChannel = this.outputChannelManager.getChannel(channelName);
         }
     };
+}
+
+export namespace ScrollLockToolbarItem {
+    export interface Props {
+        readonly outputChannelManager: OutputChannelManager;
+        readonly outputContribution: OutputContribution;
+    }
+    export interface State {
+        lockedChannels: Array<string>;
+    }
+}
+class ScrollLockToolbarItem extends React.Component<ScrollLockToolbarItem.Props, ScrollLockToolbarItem.State> {
+
+    readonly id: 'output:scrollLockToolbarItem';
+    readonly priority = 2;
+    protected readonly toDispose = new DisposableCollection();
+
+    constructor(props: Readonly<ScrollLockToolbarItem.Props>) {
+        super(props);
+        this.state = { lockedChannels: [] };
+    }
+
+    isVisible(widget: Widget): boolean {
+        return widget instanceof OutputWidget;
+    }
+
+    render(): React.ReactNode {
+        const { outputContribution } = this.props;
+        const widget = outputContribution.tryGetWidget();
+        if (!widget) {
+            return undefined;
+        }
+        return <div
+            key='output:toggleScrollLock'
+            className={`fa ${widget.isLocked() ? 'fa-lock' : 'fa-unlock-alt'} item enabled`}
+            title='Toggle Auto Scrolling'
+            onClick={this.toggleScrollLock}
+        />;
+    }
+
+    protected readonly toggleScrollLock = (e: React.MouseEvent<HTMLElement>) => this.doToggleScrollLock(e);
+    protected doToggleScrollLock(e: React.MouseEvent<HTMLElement>): void {
+        const { outputContribution } = this.props;
+        const widget = outputContribution.tryGetWidget();
+        if (!widget) {
+            return;
+        }
+        widget.toggleScrollLock();
+        e.stopPropagation();
+    }
+
 }
